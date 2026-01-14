@@ -1,0 +1,11 @@
+# Data files
+data/*.csv
+data/*.pkl
+
+movie_model.pkl
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
