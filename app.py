@@ -118,7 +118,7 @@ def get_recommendations(user_id, top_n=10):
     return recs.sort_values('movieId')
 
 # --- 4. STREAMLIT UI ---
-st.title("🍿 Personalized Movie Matcher")
+st.title(" Personalized Movie Matcher")
 st.markdown("Discover movies based on users with similar tastes.")
 
 col1, col2 = st.columns([1, 2])
@@ -135,7 +135,7 @@ with col2:
             recs = get_recommendations(user_id_input, num_recs)
             
             if recs is None:
-                st.error("❌ User ID not found in database.")
+                st.error(" User ID not found in database.")
             elif recs.empty:
                 st.warning("No new movies found for this user.")
             else:
