@@ -30,22 +30,21 @@ st.markdown("""
 @st.cache_resource
 def load_data():
     file_path = 'movie_model.pkl'
-    # Extracted from your Google Drive link
+    # Direct download link construction
     file_id = '1FtWuskctC8p4xOWQSGhYgRjb8CzYRsqO'
     url = f'https://drive.google.com/uc?id={file_id}'
 
-    # Download from Google Drive if not present locally on the server
     if not os.path.exists(file_path):
-        with st.spinner("Downloading model file from Google Drive... This may take a minute due to file size (415MB)."):
+        with st.spinner("Downloading model... This may take a minute."):
             try:
-                gdown.download(url, file_path, quiet=False)
+                # Adding fuzzy=True helps handle large file warning pages
+                gdown.download(url, file_path, quiet=False, fuzzy=True)
             except Exception as e:
-                st.error(f"Error downloading model: {e}")
+                st.error(f"Download failed: {e}")
                 return None
-
+    
     with open(file_path, 'rb') as f:
-        data = pickle.load(f)
-    return data
+        return pickle.load(f)
 
 # Load the model data
 data = load_data()
