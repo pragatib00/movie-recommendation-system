@@ -10,43 +10,60 @@ import gdown
 st.set_page_config(page_title="Movie Matcher", layout="wide")
 warnings.filterwarnings('ignore')
 
+# UPDATED CSS: Forces colors to stay visible in both Light and Dark modes
 st.markdown("""
     <style>
     .movie-card {
-        background-color: #ffffff;
+        background-color: #f9f9f9 !important;
         padding: 15px;
         border-radius: 12px;
         border-left: 6px solid #e50914;
         margin-bottom: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         transition: transform 0.2s;
+        min-height: 100px;
     }
     .movie-card:hover { transform: scale(1.02); }
-    .genre-text { color: #555; font-size: 0.9rem; font-style: italic; }
+    
+    /* Forces the title to be black even in Dark Mode */
+    .movie-title { 
+        color: #111111 !important; 
+        font-size: 1.1rem; 
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    /* Forces the genre to be dark gray */
+    .genre-text { 
+        color: #444444 !important; 
+        font-size: 0.85rem; 
+        font-style: italic; 
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA LOADING (Cloud-Ready Version) ---
+# --- 2. DATA LOADING ---
 @st.cache_resource
 def load_data():
     file_path = 'movie_model.pkl'
-    # Direct download link construction
     file_id = '1FtWuskctC8p4xOWQSGhYgRjb8CzYRsqO'
     url = f'https://drive.google.com/uc?id={file_id}'
 
     if not os.path.exists(file_path):
         with st.spinner("Downloading model... This may take a minute."):
             try:
-                # Adding fuzzy=True helps handle large file warning pages
                 gdown.download(url, file_path, quiet=False, fuzzy=True)
             except Exception as e:
                 st.error(f"Download failed: {e}")
                 return None
     
-    with open(file_path, 'rb') as f:
-        return pickle.load(f)
+    try:
+        with open(file_path, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        st.error(f"Error loading pickle: {e}")
+        return None
 
-# Load the model data
 data = load_data()
 
 if data:
@@ -55,12 +72,11 @@ if data:
     user_mapping = data['user_mapping']
     movie_mapping = data['movie_mapping']
     movies_df = data['movies_df']
-
-    # Set up ID mappings
     u_to_idx = {v: k for k, v in user_mapping.items()}
     idx_to_m = movie_mapping
 else:
-    st.stop() # Stop execution if data failed to load
+    st.error("Could not load data. Please refresh the page.")
+    st.stop()
 
 # --- 3. RECOMMENDATION ENGINE ---
 def get_recommendations(user_id, top_n=10):
@@ -95,40 +111,48 @@ def get_recommendations(user_id, top_n=10):
     top_items = sorted(normalized_scores, key=lambda x: x[1], reverse=True)[:top_n]
     actual_ids = [idx_to_m[item[0]] for item in top_items]
     
-    return movies_df[movies_df['movieId'].isin(actual_ids)]
+    # Filter and preserve order
+    recs = movies_df[movies_df['movieId'].isin(actual_ids)].copy()
+    # Add sort key to keep the recommendation order
+    recs['movieId'] = pd.Categorical(recs['movieId'], categories=actual_ids, ordered=True)
+    return recs.sort_values('movieId')
 
 # --- 4. STREAMLIT UI ---
-st.title(" Personalized Movie Matcher")
-st.markdown("Discover hidden gems based on users with similar tastes.")
+st.title("🍿 Personalized Movie Matcher")
+st.markdown("Discover movies based on users with similar tastes.")
 
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("User Selection")
-    user_id_input = st.number_input("Enter your User ID:", min_value=1, step=1)
-    num_recs = st.select_slider("How many movies?", options=[5, 10, 15, 20], value=10)
+    st.subheader("Selection")
+    user_id_input = st.number_input("Enter User ID:", min_value=1, step=1, value=1)
+    num_recs = st.select_slider("Recommendations count:", options=[5, 10, 16, 20], value=10)
     trigger = st.button("Generate My List")
 
 with col2:
     if trigger:
-        with st.spinner("Finding people like you..."):
+        with st.spinner("Analyzing tastes..."):
             recs = get_recommendations(user_id_input, num_recs)
             
             if recs is None:
-                st.error(" User ID not found.")
+                st.error("❌ User ID not found in database.")
             elif recs.empty:
-                st.warning("No new recommendations found.")
+                st.warning("No new movies found for this user.")
             else:
                 st.success(f"Top {len(recs)} picks for User {user_id_input}:")
                 grid = st.columns(2)
                 for i, (_, row) in enumerate(recs.iterrows()):
+                    # Use .get() or check column names to prevent KeyError
+                    title = row['title'] if 'title' in row else "Unknown Title"
+                    genres = row['genres'] if 'genres' in row else "No genre info"
+                    
                     with grid[i % 2]:
                         st.markdown(f"""
                             <div class="movie-card">
-                                <div style="font-size: 1.1rem; font-weight: bold;">{row['title']}</div>
-                                <div class="genre-text">{row['genres']}</div>
+                                <div class="movie-title">{title}</div>
+                                <div class="genre-text">{genres}</div>
                             </div>
                         """, unsafe_allow_html=True)
 
 st.divider()
-st.caption("Machine Learning Model: K-Nearest Neighbors | Developed by Pragati Basnet")
+st.caption("Machine Learning Model: KNN (Collaborative Filtering) | Developed by Pragati Basnet")
