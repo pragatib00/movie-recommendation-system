@@ -12,7 +12,7 @@ This project recommends movies to users based on the preferences of similar user
 - Recommend top-N movies to users
 
 ## Live App
-- http://192.168.1.70:8501
+- https://movie-recommender-system0001.streamlit.app/
 
 ## Evaluation
 The model was evaluated using leave-one-out validation:
