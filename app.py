@@ -10,7 +10,6 @@ import gdown
 st.set_page_config(page_title="Movie Matcher", layout="wide")
 warnings.filterwarnings('ignore')
 
-# Custom CSS for better looking cards
 st.markdown("""
     <style>
     .movie-card {
@@ -27,29 +26,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA LOADING (Updated for Cloud Deployment) ---
+# --- 2. DATA LOADING (Cloud-Ready Version) ---
 @st.cache_resource
 def load_data():
     file_path = 'movie_model.pkl'
-    # Your Google Drive File ID extracted from your link
+    # Extracted from your Google Drive link
     file_id = '1FtWuskctC8p4xOWQSGhYgRjb8CzYRsqO'
     url = f'https://drive.google.com/uc?id={file_id}'
 
-    # If the file doesn't exist on the Streamlit server, download it
+    # Download from Google Drive if not present locally on the server
     if not os.path.exists(file_path):
-        with st.spinner("Downloading model file from Google Drive (415MB)... This may take a moment."):
+        with st.spinner("Downloading model file from Google Drive... This may take a minute due to file size (415MB)."):
             try:
                 gdown.download(url, file_path, quiet=False)
             except Exception as e:
-                st.error(f"Failed to download model: {e}")
+                st.error(f"Error downloading model: {e}")
                 return None
 
-    # Load the pickle file
     with open(file_path, 'rb') as f:
         data = pickle.load(f)
     return data
 
-# Unpack data
+# Load the model data
 data = load_data()
 
 if data:
@@ -59,9 +57,11 @@ if data:
     movie_mapping = data['movie_mapping']
     movies_df = data['movies_df']
 
-    # Reverse mappings for logic
+    # Set up ID mappings
     u_to_idx = {v: k for k, v in user_mapping.items()}
     idx_to_m = movie_mapping
+else:
+    st.stop() # Stop execution if data failed to load
 
 # --- 3. RECOMMENDATION ENGINE ---
 def get_recommendations(user_id, top_n=10):
@@ -69,78 +69,67 @@ def get_recommendations(user_id, top_n=10):
         return None
     
     u_idx = u_to_idx[user_id]
-    
-    # 1. Get neighbors
     distances, indices = knn.kneighbors(user_movie_sparse[u_idx], n_neighbors=21)
     
     neighbor_indices = indices[0][1:]
     similarities = 1 - distances[0][1:]
-    
-    # 2. Track watched movies
-    watched_movie_indices = set(user_movie_sparse[u_idx].indices)
+    watched_indices = set(user_movie_sparse[u_idx].indices)
     
     movie_scores = {}
-    total_similarity = {} 
+    total_sim = {} 
 
-    # 3. Aggregate ratings
     for idx, sim_weight in zip(neighbor_indices, similarities):
         neighbor_row = user_movie_sparse[idx]
         for m_idx, rating in zip(neighbor_row.indices, neighbor_row.data):
-            if m_idx not in watched_movie_indices:
+            if m_idx not in watched_indices:
                 movie_scores[m_idx] = movie_scores.get(m_idx, 0) + (sim_weight * rating)
-                total_similarity[m_idx] = total_similarity.get(m_idx, 0) + sim_weight
+                total_sim[m_idx] = total_sim.get(m_idx, 0) + sim_weight
 
     if not movie_scores:
         return pd.DataFrame()
 
-    # 4. Normalize
     normalized_scores = []
     for m_idx in movie_scores:
-        final_score = movie_scores[m_idx] / total_similarity[m_idx]
+        final_score = movie_scores[m_idx] / total_sim[m_idx]
         normalized_scores.append((m_idx, final_score))
 
-    # 5. Sort
     top_items = sorted(normalized_scores, key=lambda x: x[1], reverse=True)[:top_n]
     actual_ids = [idx_to_m[item[0]] for item in top_items]
     
     return movies_df[movies_df['movieId'].isin(actual_ids)]
 
 # --- 4. STREAMLIT UI ---
-st.title("🍿 Personalized Movie Matcher")
-st.markdown("Discover hidden gems based on users with similar tastes to yours.")
+st.title(" Personalized Movie Matcher")
+st.markdown("Discover hidden gems based on users with similar tastes.")
 
-if not data:
-    st.error("Model data could not be loaded. Check your Google Drive link permissions.")
-else:
-    col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns([1, 2])
 
-    with col1:
-        st.subheader("User Selection")
-        user_id_input = st.number_input("Enter your User ID:", min_value=1, step=1)
-        num_recs = st.select_slider("How many movies?", options=[5, 10, 15, 20], value=10)
-        trigger = st.button("Generate My List")
+with col1:
+    st.subheader("User Selection")
+    user_id_input = st.number_input("Enter your User ID:", min_value=1, step=1)
+    num_recs = st.select_slider("How many movies?", options=[5, 10, 15, 20], value=10)
+    trigger = st.button("Generate My List")
 
-    with col2:
-        if trigger:
-            with st.spinner("Finding people like you..."):
-                recommendations = get_recommendations(user_id_input, num_recs)
-                
-                if recommendations is None:
-                    st.error("⚠️ User ID not found in the training data.")
-                elif recommendations.empty:
-                    st.warning("No new recommendations found for this user.")
-                else:
-                    st.success(f"Top {len(recommendations)} picks for User {user_id_input}:")
-                    grid_cols = st.columns(2)
-                    for i, (_, row) in enumerate(recommendations.iterrows()):
-                        with grid_cols[i % 2]:
-                            st.markdown(f"""
-                                <div class="movie-card">
-                                    <div style="font-size: 1.2rem; font-weight: bold; color: #111;">{row['title']}</div>
-                                    <div class="genre-text">{row['genres']}</div>
-                                </div>
-                            """, unsafe_allow_html=True)
+with col2:
+    if trigger:
+        with st.spinner("Finding people like you..."):
+            recs = get_recommendations(user_id_input, num_recs)
+            
+            if recs is None:
+                st.error(" User ID not found.")
+            elif recs.empty:
+                st.warning("No new recommendations found.")
+            else:
+                st.success(f"Top {len(recs)} picks for User {user_id_input}:")
+                grid = st.columns(2)
+                for i, (_, row) in enumerate(recs.iterrows()):
+                    with grid[i % 2]:
+                        st.markdown(f"""
+                            <div class="movie-card">
+                                <div style="font-size: 1.1rem; font-weight: bold;">{row['title']}</div>
+                                <div class="genre-text">{row['genres']}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
 
 st.divider()
-st.caption("Machine Learning Model: K-Nearest Neighbors (Collaborative Filtering)")
-st.caption("By Pragati Basnet")
+st.caption("Machine Learning Model: K-Nearest Neighbors | Developed by Pragati Basnet")
