@@ -129,3 +129,4 @@ with col2:
 # Footer
 st.divider()
 st.caption("Machine Learning Model: K-Nearest Neighbors (Collaborative Filtering)")
+st.caption("By Pragati Basnet")
